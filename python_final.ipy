@@ -1,0 +1,179 @@
+### Mesolongitis Konstantinos (nm17009)
+### Oikonomou Kyriakos (nm17006)
+### Date completed: 07.05.2021
+
+##### Goal:
+# Streaming data from a microphone in real time. 
+# With 2048 samples per chunk, it produces approximately 18 FPS.
+ 
+# Importing modules
+try:
+    import pyaudio #captures audio
+    import struct #it lets you unpack audio data into integers instead of these binary numbers
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import time
+    from scipy.fftpack import fft 
+    import tkinter as tk 
+    import keyboard
+    #from scipy import signal
+    import sounddevice as sd
+    from scipy.io.wavfile import write
+    import wavio as wv
+    #from scipy.io import wavfile
+    import sys
+    import matplotlib
+    import pylab
+    #import os
+    import wave
+#except RuntimeError: 
+except:
+    print('Check if you have installed properly all the packages')
+    sys.exit()
+    
+#%matplotlib tk  
+#it will display a seperate window
+matplotlib.use('TkAgg')
+
+channels1 = 1
+freq = 44100 #samples per second (kHz)
+chunk = 1024*2 #how much audio is going to be processed at each time, how many audio samples per frame
+format1 = pyaudio.paInt16 #bytes per sample
+duration = 5
+
+class Sampling: 
+    
+    def __init__(self,name0,namewv,duration,frequency):
+        self.name0=name0
+        self.namewv=namewv
+        self.duration=duration
+        self.frequency=frequency
+              
+    def record(self):
+
+        # Start recorder with the given values 
+        # of duration and sample frequency
+        recording = sd.rec(int(self.duration * self.frequency), samplerate=self.frequency, channels=1)
+    
+        # Record audio for the given number of seconds
+        sd.wait()
+    
+        # This will convert the NumPy array to an audio
+        # file with the given sampling frequency
+        write(self.name0, self.frequency, recording)
+  
+        # Convert the NumPy array to audio file
+        wv.write(self.namewv, recording, self.frequency, sampwidth=1)
+        
+    def spectro(self):
+        wav = wave.open(self.namewv, 'r')
+        frames = wav.readframes(-1)
+        sound_info = pylab.frombuffer(frames, 'int16')
+        frame_rate = wav.getframerate()
+        wav.close()
+        
+        pylab.figure(num=None, figsize=(19, 12))
+        pylab.subplot(111)
+        pylab.title('Spectrogram | Mesolongitis Konstantinos, Oikonomou Kyriakos')
+        pylab.specgram(sound_info, Fs=frame_rate)
+        pylab.colorbar()
+        pylab.savefig('spectrogram.png')
+
+s = Sampling('recording1.wav','recording2.wav',duration,freq)
+
+try:
+    mic = pyaudio.PyAudio()
+
+    stream = mic.open(
+        format = format1,
+        channels = channels1,
+        rate = freq,
+        input = True, 
+        output = True,
+        frames_per_buffer = chunk
+        )
+except: 
+    print('Unable to open mic.')
+    
+fig,ax2=plt.subplots(figsize=(15,7))
+
+x = np.arange(0, 2*chunk, 2)
+x_fft = np.linspace(0,freq,chunk)
+
+line_fft, = ax2.plot(x_fft,np.random.rand(chunk),'-',lw=2)
+
+#Plots formatting and styling (SPECTRUM)
+ax2.set_title('Spectrogram')
+ax2.set_xlabel('Frequency (Hz)')
+
+frame_count=0
+start_time = time.time()
+k=0    # Dummy variable used as index
+t1=[]  # Creating empty list to insert the maximum points
+
+while True:
+   
+    #Binary Data
+    data = stream.read(chunk)
+    
+    #Convert data to integers, make np array, then offset it by 255/2
+    data_int = struct.unpack(str(2*chunk)+'B',data)
+    data_np = np.array(data_int, dtype='b')[::2] + 255/2
+    #line.set_ydata(data_np)
+    
+    #Compute FFT and update line
+    yf=fft(data_int)
+    yf[0]=0
+    normalized=np.abs(yf[0:chunk])/(128*chunk)
+    line_fft.set_ydata(normalized)
+    
+    t=np.where(np.abs(yf[0:chunk])==np.amax(np.abs(yf[0:chunk]))) # Using np.where to find where the max is (using np.amax)
+    
+    (x,y)=(x_fft[t],np.amax(np.abs(yf[0:chunk]/(128*chunk))))   # The coordinates of the maximum 
+    print("Frequency of max value", x)
+    # Appending the maximum of the current state of the loop to the empty list t1
+    t1.append(ax2.plot(x,y,marker='o',color='red',markersize=11,markeredgecolor='white',zorder=1))    
+    
+    if k>1:
+        unpoint=t1[k-1]   # The point we want to remove
+        rem=unpoint.pop(0) # Poopping the point from the list 
+        rem.remove()  # Removing entirely the point
+               
+       
+        if 2000<x<20000 : # Setting the axis limits
+            ax2.set_xlim(x-2000, x+2000)    # variable freq - axis limits +- 2000 around the maximum 
+        elif x<2000 : # We use it so that the axis is positive 
+            ax2.set_xlim(5, x+2000)  
+      
+    
+    elif k==0:  # If k=0 we remove the first maximum that is plotted
+        unpoint=t1[k]
+        rem=unpoint.pop(0)
+        rem.remove()    
+   
+    k=k+1     
+
+    # Using try-except error - keyboard interruption    
+    try:   
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        frame_count +=1
+        
+        if keyboard.is_pressed('q'):  # Press q to exit
+            print('Quit button was pressed')
+            plt.close('all')
+        
+        elif keyboard.is_pressed('r'):    # Press r to record and create the respective spectrogram 
+                print('Sampling starts')
+                s.record()   
+                s.spectro()
+
+    except tk.TclError: 
+        # calculate average frame rate
+        frame_rate = frame_count / (time.time() - start_time)
+        
+        print('stream stopped')
+        print('average frame rate = {:.0f} FPS'.format(frame_rate))
+        #sys.exit()
+        break
+       

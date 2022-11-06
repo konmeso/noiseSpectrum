@@ -1,0 +1,184 @@
+### Mesolongitis Konstantinos (nm17009)
+### Oikonomou Kyriakos (nm17006)
+### Date completed: 07.05.2021
+
+##### Goal:
+# Streaming data from a microphone in real time. 
+# With 2048 samples per chunk, it produces approximately 10 FPS.
+
+### Corrections to be made: 
+    # cut the upper diagram 
+    # dBa in the y-axis 
+    # max points in the second diagram
+    # more try, except 
+ 
+# Importing modules
+import pyaudio #captures audio
+import struct #it lets you unpack audio data into integers instead of these binary numbers
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+from scipy.fftpack import fft 
+import tkinter as tk 
+import keyboard
+#from scipy import signal
+import sounddevice as sd
+from scipy.io.wavfile import write
+import wavio as wv
+#from scipy.io import wavfile
+#import sys
+import matplotlib
+import pylab
+#import os
+import wave
+
+#%matplotlib tk  
+#it will display a seperate window
+matplotlib.use('TkAgg')
+
+
+
+class Sampling: 
+    
+    def __init__(self,name0,namewv,duration,frequency):
+        self.name0=name0
+        self.namewv=namewv
+        self.duration=duration
+        self.frequency=frequency
+        
+    def record(self):
+
+        # Start recorder with the given values 
+        # of duration and sample frequency
+        recording = sd.rec(int(self.duration * self.frequency), samplerate=self.frequency, channels=1)
+    
+        # Record audio for the given number of seconds
+        sd.wait()
+    
+        # This will convert the NumPy array to an audio
+        # file with the given sampling frequency
+        write(self.name0, self.frequency, recording)
+  
+        # Convert the NumPy array to audio file
+        wv.write(self.namewv, recording, self.frequency, sampwidth=1)
+        
+    def spectro(self):
+        wav = wave.open(self.namewv, 'r')
+        frames = wav.readframes(-1)
+        sound_info = pylab.frombuffer(frames, 'int16')
+        frame_rate = wav.getframerate()
+        wav.close()
+        
+        pylab.figure(num=None, figsize=(19, 12))
+        pylab.subplot(111)
+        pylab.title('Spectrogram | Mesolongitis Konstantinos, Oikonomou Kyriakos')
+        pylab.specgram(sound_info, Fs=frame_rate)
+        pylab.colorbar()
+        pylab.savefig('spectrogram.png')
+        
+#Inputs
+channels1 = 1
+freq = 44100 #samples per second (kHz)
+chunk = 1024*2 #how much audio is going to be processed at each time, how many audio samples per frame
+format1 = pyaudio.paInt16 #bytes per sample
+duration = 5 #seconds
+        
+# The following command sets up the portaudio system. 
+mic = pyaudio.PyAudio()
+
+# p.open() records or plays audio.
+# Play audio by writing audio data to the stream using pyaudio.Stream.write(),
+# or read audio data from the stream using pyaudio.Stream.read()
+stream = mic.open(
+    format = format1,
+    channels = channels1,
+    rate = freq,
+    input = True, 
+    output = True,
+    frames_per_buffer = chunk
+    )
+
+
+# Defining subplots environment
+fig, (ax,ax2)  = plt.subplots(2,figsize=(15,7))
+
+# Defining x - coordinates
+x = np.arange(0, 2*chunk, 2)
+x_fft = np.linspace(0,freq,chunk)
+
+# Line shaping definition. It is going to be used for plotting real time data. 
+line, = ax.plot(x, np.random.rand(chunk), '-',lw=2)
+line_fft, = ax2.plot(x_fft,np.random.rand(chunk),'-',lw=2)
+
+#Plots formatting and styling (WAVEFORM)
+ax.set_title('Audio waveform')
+ax.set_xlabel('Samples')
+ax.set_ylabel('Volume')
+#ax.autoscale(enable = True, axis = 'y', tight = None)
+ax.set_ylim(0,255)
+ax.set_xlim(0,chunk)
+
+#Plots formatting and styling (SPECTRUM)
+ax2.set_title('Spectrum')
+ax2.set_xlabel('Frequency (Hz)')
+ax2.set_xlim(5, 5000)
+#ax2.autoscale(enable = None, axis = 'y')
+
+# Calling functions from class Sampling
+s = Sampling('recording1.wav','recording2.wav',duration,freq)
+
+# Message for letting us known that the stream of data has begun.
+print('Stream Started')
+
+# Variables used for calculating FPS
+frame_count=0
+start_time = time.time()
+
+while True:
+        
+    #Binary Data
+    data = stream.read(chunk)
+    
+    #Convert data to integers, make np array, then offset it by 255/2
+    data_int = struct.unpack(str(2*chunk)+'B',data)
+    data_np = np.array(data_int, dtype='b')[::2] + 255/2
+    line.set_ydata(data_np)
+    
+    #Compute FFT and update line
+    yf=fft(data_int)
+    line_fft.set_ydata(np.abs(yf[0:chunk])/(128*chunk))
+    
+    (x,y)=(np.where(data_np==np.amax(data_np)) ,np.amax(data_np))
+    ax.plot(x,y,marker='o',color='red',markersize=11,markeredgecolor='white',zorder=1)
+    plt.pause(0.0001)
+    ax.plot(x,y,marker='o',color='white',markersize=11,markeredgecolor='white',zorder=1)
+    
+    #update figure canvas
+    try: 
+        
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        frame_count +=1
+        
+        if keyboard.is_pressed('q'):
+            print('Quit button is pressed')
+            plt.close('all')
+            
+        elif keyboard.is_pressed('k'):
+            print('Sampling starts')
+            s.record()
+            s.spectro()
+
+    except tk.TclError:
+        # calculate average frame rate
+        frame_rate = frame_count / (time.time() - start_time)
+        
+        print('stream stopped')
+        print('average frame rate = {:.0f} FPS'.format(frame_rate))
+        break
+    
+
+#s.record
+#s.Spectro()
+
+    
